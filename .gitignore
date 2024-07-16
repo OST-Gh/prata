@@ -1,0 +1,8 @@
+.gitattributes
+.env
+***.swp
+
+**Cargo.lock
+**target
+
+**.DS_Store
