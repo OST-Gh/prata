@@ -2,9 +2,9 @@
 [package]
 	authors      = ['OST-Gh']
 	categories   = ['command-line-utilities']
-	description  = ''
+	description  = 'A bespoke T.C.P./I.P.(v.4) chat application.'
 	edition      = '2021'
-	keywords     = ['toml']
+	keywords     = []
 	license-file = 'LICENSE'
 	name         = 'prata'
 	readme       = 'README.md'
@@ -15,4 +15,6 @@
 	path = 'src/main.rs'
 ###############################################################################################################################################################################################################################################################
 [dependencies]
-	thiserror = '1'
+	lazy-regex       = '3'
+	local-ip-address = '0'
+	thiserror        = '1'
