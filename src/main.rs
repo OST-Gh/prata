@@ -1,8 +1,8 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-use local_ip_address::{local_ip, Error};
+use lazy_regex::regex;
 use netspaces::{B24Ns192, IPv4Pns};
-use std::io::{self, stdout, BufWriter, Write};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener, TcpStream};
+use std::env;
+use std::io::{stdout, BufWriter, Write};
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 mod call;
 mod client;
@@ -11,31 +11,12 @@ mod server;
 mod test;
 mod util;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-fn main() -> io::Result<()> {
-	let mut iter = IPv4Pns::from(B24Ns192).into_iter();
+fn main() -> util::Result<()> {
 	let mut out = BufWriter::new(stdout().lock());
-
+	let addr_spc = util::determine_address().map(IPv4Pns::try_from)??;
+	dbg![util::StartupOption::new()];
+	dbg![util::Port::new()];
 	// [202407160951+0200] NOTE(by: @OST-Gh): current test code.
-	while !iter.has_ended() {
-		for i in 0..8 {
-			let Some(addr) = iter.next() else { unreachable!() };
-			let space: &[u8] = if i == 0 { b"" } else { b" " };
-			let separator: &[u8] = if i == 7 { b"" } else { b"," };
-
-			out.write_all(
-				&[
-					space,
-					addr.to_string()
-						.as_bytes(),
-					separator,
-				]
-				.concat(),
-			)?;
-		}
-		if !iter.has_ended() {
-			out.write_all(b"\n")?;
-		}
-	}
 	out.write_all(b"\0")?;
 	out.flush()?;
 	Ok(())

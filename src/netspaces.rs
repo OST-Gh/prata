@@ -130,7 +130,6 @@ macro_rules! impl_ipv4ns {
 		#[derive(core::cmp::Eq, core::cmp::PartialEq, core::cmp::Ord, core::cmp::PartialOrd)]
 		#[derive(core::clone::Clone)]
 		#[derive(core::hash::Hash)]
-		$(#[$try_from_error_attributes])*
 		pub enum $try_from_error {
 			#[error(r#"The IPv4. address "{0}" is not contained within any relative net.-space."#)]
 			NotInRange(std::net::Ipv4Addr),
@@ -277,12 +276,9 @@ macro_rules! impl_ipv4ns {
 			impl core::convert::TryFrom<core::net::Ipv4Addr> for $netspace {
 				type Error = $try_from_error;
 
-				fn try_from(address: std::net::Ipv4Addr) -> Result<Self, Self::Error> {
-					let space = match address {
-						$(_ if $long::$filter(&address) => Self::$short($long),)+
-						_ => core::result::Result::Err($try_from_error::NotInRange(address))?,
-					};
-					core::result::Result::Ok(space)
+				fn try_from(address: core::net::Ipv4Addr) -> Result<Self, Self::Error> {
+					$(if $long::try_from(address).is_ok() { return Ok(Self::$short($long)) })+
+					core::result::Result::Err(Self::Error::NotInRange(address))?
 				}
 			}
 
@@ -462,9 +458,21 @@ macro_rules! impl_ipv4ns {
 				}
 			}
 
-				impl core::convert::From<$long> for $netspace {
-					#[inline(always)] fn from(space: $long) -> Self { Self::$short(space) }
+			impl core::convert::TryFrom<core::net::Ipv4Addr> for $long {
+				type Error = $try_from_error;
+
+				fn try_from(ip: core::net::Ipv4Addr) -> core::result::Result<Self, Self::Error> {
+					if Self::$filter(&ip) {
+						return core::result::Result::Ok(Self);
+					}
+					core::result::Result::Err(Self::Error::NotInRange(ip))
 				}
+
+			}
+
+			impl core::convert::From<$long> for $netspace {
+				#[inline(always)] fn from(space: $long) -> Self { Self::$short(space) }
+			}
 		)+)+
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	}

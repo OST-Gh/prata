@@ -3,8 +3,8 @@ use std::io;
 use std::net::{Ipv4Addr, TcpListener};
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Create a nonblocking [`TcpListener`] on a given I.P.A. and port.
-pub fn host_on(ip: Ipv4Addr, port: u16) -> io::Result<TcpListener> {
-	let connection = TcpListener::bind((ip, port))?;
+pub fn host_on(ip: Ipv4Addr, port: impl Into<u16>) -> io::Result<TcpListener> {
+	let connection = TcpListener::bind((ip, port.into()))?;
 	connection.set_nonblocking(true)?;
 	Ok(connection)
 }
