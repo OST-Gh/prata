@@ -25,7 +25,7 @@ pub enum FromCallError {
 #[derive(Hash)]
 pub enum Port {
 	Default,
-	// [202407161159+0200] NOTE(by: @OST-Gh): no difference, but clearness of origin for the dev.
+	// [202407161159+0200] NOTE(by: @OST-Gh): no difference but clearness of origin for the dev.
 	PerFlag(u16),
 	PerEnvironment(u16),
 }

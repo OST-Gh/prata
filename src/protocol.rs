@@ -1,8 +1,10 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+use crate::client::Client;
 use chrono::{DateTime, Utc};
 use lazy_regex::regex;
 use std::{
-	io::{self, BufRead, BufReader, Write},
+	collections::HashMap,
+	io::{self, BufRead, BufReader, Read, Write},
 	net::{SocketAddr, TcpListener, TcpStream},
 	str::FromStr,
 	string::FromUtf8Error,
@@ -19,11 +21,22 @@ pub struct User {
 	inbound_on: (BufReader<TcpStream>, SocketAddr),
 }
 
-pub struct Message {
-	author: User,
-	concerns: Concern,
+struct AnonymousMessage {
+	concern: Concern,
 	written_on: DateTime<Utc>,
 	contents: Box<str>,
+}
+
+pub struct Message {
+	author: User,
+	message: AnonymousMessage,
+}
+
+/// Network byte protocol stream.
+pub struct Bytes {}
+
+pub struct MessageBuffer {
+	messages: HashMap<Username, Vec<AnonymousMessage>>,
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub enum Concern {
@@ -47,6 +60,39 @@ pub enum UsernameFromStrError {
 	#[error(r"`{0}` doesn't match `^@?[[:alnum][:punct:]--[\{{\}}\(\)\[\]@]]`")]
 	NoMatch(Box<str>),
 }
+
+pub enum MessageError {
+	/* [202407180813+0200] NOTE(by: @OST-Gh):
+	 *	RET_ON: Other party has gracefully closed the stream.
+	 */
+	ConnectionClosed,
+	/* [202407180814+0200] NOTE(by: @OST-Gh):
+	 *	RET_ON: Other party hung up without prior notification.
+	 */
+	ConnectionInterrupted,
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+pub trait Protocol {
+	type Sender: Write;
+	type Receiver: BufRead;
+
+	fn get_sender(&mut self) -> &Self::Sender;
+	fn get_sender_mut(&mut self) -> &mut Self::Sender;
+	fn get_receiver(&self) -> &Self::Receiver;
+	fn get_receiver_mut(&self) -> &mut Self::Receiver;
+
+	fn send(&mut self, message: impl Into<Message>) -> Result<(), MessageError> {
+		self.get_sender_mut()
+			.write_all(message)
+	}
+	fn wait(&mut self) -> Result<Message, MessageError>;
+
+	fn hang_up() -> Result<(), MessageError>;
+
+	fn politely_hang_up(&mut self) -> Result<(), MessageError> {
+		self.send()
+	}
+}
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub fn get_id() -> u16 {
 	let prev = unsafe { ID };
@@ -59,8 +105,9 @@ impl Username {
 	/// Forcibly change the username without any checks for duplicates.
 	pub fn change_username_unchecked(
 		&mut self,
-		mut stream: BufReader<TcpStream>,
+		mut stream: Client,
 	) -> Result<(), FromTransmissionError> {
+		// [202407180827+0200] TODO(by: @OST-Gh): reimplement.
 		let mut buf = Vec::with_capacity(2);
 		stream.read_until(0x00, &mut buf)?;
 		let new = String::from_utf8(buf)?.parse::<Username>()?;
@@ -114,5 +161,12 @@ impl TryFrom<TcpListener> for User {
 			inbound_on,
 			id,
 		})
+	}
+}
+
+impl From<(User, AnonymousMessage)> for Message {
+	#[inline(always)]
+	fn from((author, message): (User, AnonymousMessage)) -> Self {
+		Self { author, message }
 	}
 }

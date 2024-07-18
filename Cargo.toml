@@ -2,7 +2,7 @@
 [package]
 	authors      = ['OST-Gh']
 	categories   = ['command-line-utilities']
-	description  = 'A bespoke T.C.P./I.P.(v.4) chat application.'
+	description  = 'A bespoke T.C.P./I.P.(v.4) chat application that runs from the C.L.I.'
 	edition      = '2021'
 	keywords     = []
 	license-file = 'LICENSE'
