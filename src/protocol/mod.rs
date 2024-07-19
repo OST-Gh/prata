@@ -39,12 +39,21 @@ pub struct Message {
 }
 
 /// Network byte protocol stream.
-pub struct Bytes {}
+pub struct Stream<'a> {
+	header: u8,
+	contents: &'a [u8],
+}
 
 pub struct MessageBuffer {
 	messages: HashMap<Username, Vec<AnonymousMessage>>,
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#[derive(Copy, Clone)]
+pub enum StreamSize {
+	Representable(u8),
+	Unsized,
+}
+
 pub enum Concern {
 	Everyone,
 	SingleSpecific(User),
@@ -78,6 +87,19 @@ pub enum MessageError {
 	ConnectionInterrupted,
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+pub trait Streamable {
+	/// Three UID bits (b_m = 0b1110_0000)
+	const TYPE_HEADER: u8;
+	/// Five bits (b_m = 0b0001_1111)
+	const SIZE_HEADER: StreamSize;
+
+	fn content_as_stream<'a>(&'a self) -> &'a [u8];
+
+	fn as_byte_stream<'a>(&'a self) -> Stream<'a> {
+		let content = self.content_as_stream();
+	}
+}
+
 pub trait Protocol {
 	type Sender: Write;
 	type Receiver: BufRead;
@@ -89,7 +111,11 @@ pub trait Protocol {
 
 	fn send(&mut self, message: impl Into<Message>) -> Result<(), MessageError> {
 		self.get_sender_mut()
-			.write_all(message)
+			.write_all(
+				message.into()
+					.as_ref(),
+			)?;
+		Ok(())
 	}
 	fn wait(&mut self) -> Result<Message, MessageError>;
 
@@ -174,5 +200,59 @@ impl From<(User, AnonymousMessage)> for Message {
 	#[inline(always)]
 	fn from((author, message): (User, AnonymousMessage)) -> Self {
 		Self { author, message }
+	}
+}
+
+impl StreamSize {
+	const UNSIZED_SIGNATURE: u8 = 0b0000_0000;
+	const MASK: u8 = 0b0001_1111;
+
+	const fn from_byte(byte: u8) -> Option<Self> {
+		if byte & !Self::MASK > Self::MASK {
+			return None;
+		}
+		Some(Self::from_byte_lossy(byte))
+	}
+
+	const fn from_byte_lossy(byte: u8) -> Self {
+		if byte == Self::UNSIZED_SIGNATURE {
+			return Self::Unsized;
+		}
+		Self::Representable(byte & Self::MASK)
+	}
+
+	const fn to_byte(self) -> u8 {
+		*self.to_byte_ref()
+	}
+
+	const fn to_byte_ref(&self) -> &u8 {
+		match self {
+			Self::Unsized => &Self::UNSIZED_SIGNATURE,
+			// [202407190914+0200] NOTE(by: @OST-Gh): assume valid.
+			Self::Representable(x) => x,
+		}
+	}
+
+	/// Access the mutable reference of a possibly underlying byte.
+	///
+	/// Safety
+	///
+	/// It is inherintely unsafe to hand full control over a structure to the developer: The guarantees of the data-structures cannot be ensured anymore.
+	unsafe fn to_byte_ref_mut(&mut self) -> Option<&mut u8> {
+		match self {
+			Self::Unsized => None,
+			Self::Representable(x) => Some(x),
+		}
+	}
+}
+
+impl AsRef<u8> for StreamSize {
+	#[inline(always)]
+	fn as_ref(&self) -> &u8 {
+		match self {
+			Self::Unsized => &Self::UNSIZED_SIGNATURE,
+			// [202407190914+0200] NOTE(by: @OST-Gh): assume valid.
+			Self::Representable(x) => x,
+		}
 	}
 }
