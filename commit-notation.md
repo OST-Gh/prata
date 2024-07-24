@@ -4,6 +4,7 @@
 - KW.REMOVE: Deletion of element.
 - KW.CREATE: Creation of element.
 - KW.BREAK: Known Compilation/Interpretation error source
+- KW.FIX: Fix bugs.
 ```
 [[read description]]
 

@@ -171,6 +171,8 @@ macro_rules! impl_ipv4ns {
 		}
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		impl $iterator {
+			const LAYOUT: core::alloc::Layout = unsafe { core::alloc::Layout::from_size_align_unchecked(4, 1) };
+
 			#[inline]
 			pub fn has_ended(&self) -> bool {
 				let (a, b, c) = self.are_equal();
@@ -237,6 +239,14 @@ macro_rules! impl_ipv4ns {
 				core::option::Option::Some(before)
 			}
 		}
+
+		impl core::ops::Drop for $iterator {
+			fn drop(&mut self) {
+				unsafe { std::alloc::dealloc(self.permanent, Self::LAYOUT) }
+				unsafe { std::alloc::dealloc(self.columns, Self::LAYOUT) }
+			}
+		}
+
 		$(
 			impl $trait for $netspace {
 				#[inline(always)]
@@ -294,10 +304,8 @@ macro_rules! impl_ipv4ns {
 						.$max()
 						.octets();
 
-					let lay = unsafe { core::alloc::Layout::from_size_align_unchecked(4, 1) };
-					let allocator = std::alloc::System;
-					let permanent = unsafe { <std::alloc::System as core::alloc::GlobalAlloc>::alloc_zeroed(&allocator, lay) };
-					let columns =  unsafe { <std::alloc::System as core::alloc::GlobalAlloc>::alloc_zeroed(&allocator, lay) };
+					let permanent = unsafe { std::alloc::alloc_zeroed(Self::IntoIter::LAYOUT) };
+					let columns =  unsafe { std::alloc::alloc_zeroed(Self::IntoIter::LAYOUT) };
 
 					unsafe {
 						*permanent = ident;
@@ -334,63 +342,75 @@ macro_rules! impl_ipv4ns {
 		}
 
 		impl std::convert::From<core::primitive::usize> for $column_choice {
+			#[inline(always)]
 			fn from(value: usize) -> Self {
 				Self::cast((value % 4) as core::primitive::u8)
 			}
 		}
 		impl std::convert::From<core::primitive::isize> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::isize) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 		impl std::convert::From<core::primitive::u128> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::u128) -> Self {
 				Self::cast((value % 4) as core::primitive::u8)
 			}
 		}
 		impl std::convert::From<core::primitive::i128> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::i128) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 		impl std::convert::From<core::primitive::u64> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::u64) -> Self {
 				Self::cast((value % 4) as core::primitive::u8)
 			}
 		}
 		impl std::convert::From<core::primitive::i64> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::i64) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 		impl std::convert::From<core::primitive::u32> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::u32) -> Self {
 				Self::cast((value % 4) as core::primitive::u8)
 			}
 		}
 		impl std::convert::From<core::primitive::i32> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::i32) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 		impl std::convert::From<core::primitive::u16> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::u16) -> Self {
 				Self::cast((value % 4) as u8)
 			}
 		}
 		impl std::convert::From<core::primitive::i16> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::i16) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 		impl std::convert::From<core::primitive::u8> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::u8) -> Self {
 				Self::cast(value % 4)
 			}
 		}
 		impl std::convert::From<core::primitive::i8> for $column_choice {
+			#[inline(always)]
 			fn from(value: core::primitive::i8) -> Self {
-				Self::cast((value.abs() % 4) as core::primitive::u8)
+				Self::from(value.unsigned_abs())
 			}
 		}
 
@@ -423,6 +443,7 @@ macro_rules! impl_ipv4ns {
 						$column_choice::Fourth	=> $upper4,
 					}
 				}
+
 				#[inline(always)]
 				fn $mask(&self) -> core::net::Ipv4Addr {
 					<core::net::Ipv4Addr as core::convert::From::<[u8; 4]>>::from(

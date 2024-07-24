@@ -5,15 +5,19 @@ use chrono::{DateTime, Utc};
 use client::Client;
 use lazy_regex::regex;
 use std::{
+	alloc::{alloc, dealloc, Layout},
 	collections::HashMap,
 	io::{self, BufRead, BufReader, Read, Write},
+	mem::align_of,
 	net::{SocketAddr, TcpListener, TcpStream},
+	slice,
 	str::FromStr,
 	string::FromUtf8Error,
 };
 use thiserror::Error;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub mod client;
+pub mod messages;
 pub mod server;
 pub mod spaces;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -27,37 +31,44 @@ pub struct User {
 	inbound_on: (BufReader<TcpStream>, SocketAddr),
 }
 
-struct AnonymousMessage {
-	concern: Concern,
+struct AnonymousMessage<T>
+where
+	T: Streamable,
+{
 	written_on: DateTime<Utc>,
-	contents: Box<str>,
+	contents: T,
 }
 
-pub struct Message {
+pub struct Message<T>
+where
+	T: Streamable,
+{
 	author: User,
-	message: AnonymousMessage,
+	message: AnonymousMessage<T>,
 }
 
+#[derive(Debug)]
 /// Network byte protocol stream.
 pub struct Stream<'a> {
-	header: u8,
-	contents: &'a [u8],
+	stream: &'a [u8],
+	ptr: *mut u8,
 }
 
 pub struct MessageBuffer {
-	messages: HashMap<Username, Vec<AnonymousMessage>>,
+	text_messages: HashMap<Username, Vec<AnonymousMessage<Box<str>>>>,
+	connections: HashMap<
+		Username,
+		(
+			AnonymousMessage<messages::Connect>,
+			Option<AnonymousMessage<messages::Disconnect>>,
+		),
+	>,
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Copy, Clone)]
 pub enum StreamSize {
 	Representable(u8),
 	Unsized,
-}
-
-pub enum Concern {
-	Everyone,
-	SingleSpecific(User),
-	Specific(Box<[User]>),
 }
 
 #[derive(Debug, Error)]
@@ -76,15 +87,21 @@ pub enum UsernameFromStrError {
 	NoMatch(Box<str>),
 }
 
+#[derive(Debug, Error)]
 pub enum MessageError {
+	#[error("The connection has been hung up.")]
 	/* [202407180813+0200] NOTE(by: @OST-Gh):
 	 *	RET_ON: Other party has gracefully closed the stream.
 	 */
 	ConnectionClosed,
+	#[error("The connection has been dropped.")]
 	/* [202407180814+0200] NOTE(by: @OST-Gh):
 	 *	RET_ON: Other party hung up without prior notification.
 	 */
 	ConnectionInterrupted,
+
+	#[error("{0}")]
+	IO(#[from] io::Error),
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub trait Streamable {
@@ -93,17 +110,51 @@ pub trait Streamable {
 	/// Five bits (b_m = 0b0001_1111)
 	const SIZE_HEADER: StreamSize;
 
-	fn content_as_stream<'a>(&'a self) -> &'a [u8];
-
-	fn as_byte_stream<'a>(&'a self) -> Stream<'a> {
+	fn content_as_stream(&self) -> &[u8];
+	fn as_stream(&self) -> Stream<'_> {
 		let content = self.content_as_stream();
+		let content_length = content.len();
+		let has_null = content.ends_with(&[0b0000_0000]);
+		let additional = unsafe {
+			Layout::from_size_align_unchecked(
+				1 + (!has_null as usize),
+				align_of::<u8>(),
+			)
+		};
+		let (size, _offset) = unsafe {
+			Layout::for_value(content)
+				.extend(additional)
+				.unwrap_unchecked()
+		};
+
+		let ptr = unsafe { alloc(size) };
+		let header = Self::TYPE_HEADER + Self::SIZE_HEADER.to_byte();
+		unsafe { ptr.write(header) };
+		for i in 0..content_length {
+			unsafe {
+				ptr.add(i + 1)
+					.write(*content.get_unchecked(i))
+			}
+		}
+		if has_null {
+			unsafe {
+				ptr.add(content_length + 1)
+					.write(0b0000_0000)
+			};
+		}
+		// [202407241911+0200] NOTE(by: @OST-Gh): leak?
+		Stream::from_slice_ptr(unsafe { slice::from_raw_parts(ptr, size.size()) }, ptr)
 	}
 }
 
+/// Protocol.
+///
+/// The first transaction that will be sent from the Client is always the username.
 pub trait Protocol {
 	type Sender: Write;
 	type Receiver: BufRead;
 
+	fn get_username(&self) -> &str;
 	fn get_sender(&mut self) -> &Self::Sender;
 	fn get_sender_mut(&mut self) -> &mut Self::Sender;
 	fn get_receiver(&self) -> &Self::Receiver;
@@ -113,16 +164,23 @@ pub trait Protocol {
 		self.get_sender_mut()
 			.write_all(
 				message.into()
-					.as_ref(),
+					.as_stream(),
 			)?;
 		Ok(())
 	}
+	fn register(&mut self) -> Result<(), MessageError> {
+		let user_b = String::from(self.get_username()).into_bytes();
+		self.get_sender_mut()
+			.write_all(user_b.as_slice())?;
+		Ok(())
+	}
+
 	fn wait(&mut self) -> Result<Message, MessageError>;
 
 	fn hang_up() -> Result<(), MessageError>;
 
 	fn politely_hang_up(&mut self) -> Result<(), MessageError> {
-		self.send()
+		self.send(messages::Disconnect)
 	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -144,9 +202,6 @@ impl Username {
 		stream.read_until(0x00, &mut buf)?;
 		let new = String::from_utf8(buf)?.parse::<Username>()?;
 		*self = new;
-		// [202407161557+0200] NOTE(by: @OST-Gh): send change-acknowledgement-response back to the enquirer.
-		stream.get_mut()
-			.write_all(&[0x06, 0x00])?;
 		Ok(())
 	}
 }
@@ -185,7 +240,7 @@ impl TryFrom<TcpListener> for User {
 
 		inbound_on
 			.0
-			.read_until(0x00, &mut buf)?;
+			.read_until(0b0000_0000, &mut buf)?;
 		let name = String::from_utf8(buf)?.parse::<Username>()?;
 
 		Ok(Self {
@@ -196,10 +251,32 @@ impl TryFrom<TcpListener> for User {
 	}
 }
 
-impl From<(User, AnonymousMessage)> for Message {
+impl<T> From<(User, AnonymousMessage<T>)> for Message<T>
+where
+	T: Streamable,
+{
 	#[inline(always)]
-	fn from((author, message): (User, AnonymousMessage)) -> Self {
+	fn from((author, message): (User, AnonymousMessage<T>)) -> Self {
 		Self { author, message }
+	}
+}
+
+impl<'a> Stream<'a> {
+	fn from_slice_ptr(stream: &'a [u8], ptr: *mut u8) -> Self {
+		Self { stream, ptr }
+	}
+}
+
+impl<'a> From<(&'a [u8], *mut u8)> for Stream<'a> {
+	#[inline]
+	fn from((stream, ptr): (&'a [u8], *mut u8)) -> Self {
+		Self::from_slice_ptr(stream, ptr)
+	}
+}
+
+impl<'a> Drop for Stream<'a> {
+	fn drop(&mut self) {
+		unsafe { dealloc(self.ptr, Layout::for_value(self.stream)) };
 	}
 }
 
@@ -222,10 +299,10 @@ impl StreamSize {
 	}
 
 	const fn to_byte(self) -> u8 {
-		*self.to_byte_ref()
+		*self.as_byte_ref()
 	}
 
-	const fn to_byte_ref(&self) -> &u8 {
+	const fn as_byte_ref(&self) -> &u8 {
 		match self {
 			Self::Unsized => &Self::UNSIZED_SIGNATURE,
 			// [202407190914+0200] NOTE(by: @OST-Gh): assume valid.
@@ -235,10 +312,10 @@ impl StreamSize {
 
 	/// Access the mutable reference of a possibly underlying byte.
 	///
-	/// Safety
+	/// # Safety
 	///
 	/// It is inherintely unsafe to hand full control over a structure to the developer: The guarantees of the data-structures cannot be ensured anymore.
-	unsafe fn to_byte_ref_mut(&mut self) -> Option<&mut u8> {
+	unsafe fn as_byte_ref_mut(&mut self) -> Option<&mut u8> {
 		match self {
 			Self::Unsized => None,
 			Self::Representable(x) => Some(x),
