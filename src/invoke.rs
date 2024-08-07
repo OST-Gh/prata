@@ -1,11 +1,12 @@
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-use lazy_regex::regex;
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 use std::{
 	env::{args, vars, Args, Vars},
 	num::ParseIntError,
 };
+
+use lazy_regex::regex;
 use thiserror::Error;
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Debug, Error)]
 pub enum FromCallError {
 	#[error("No value was found in the supplied iterator.")]
@@ -38,7 +39,7 @@ pub enum StartupOption {
 	Server,
 	Client,
 }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 impl Port {
 	pub const DEFAULT_PORT: u16 = 49434;
 
@@ -55,12 +56,11 @@ impl Port {
 	}
 
 	#[inline(always)]
-	/// Construct a new instance of [`Port`] by querying through both environment and arguments.
+	/// Construct a new instance of [`Port`] by querying through both
+	/// environment and arguments.
 	///
 	/// If the two do not contain a match, return the default path.
-	pub fn new() -> Self {
-		Self::default()
-	}
+	pub fn new() -> Self { Self::default() }
 }
 
 impl Default for Port {
@@ -108,16 +108,16 @@ impl TryFrom<Args> for Port {
 
 	#[inline]
 	fn try_from(mut args: Args) -> Result<Self, Self::Error> {
-		let Some(_bin_path) = args.next() else { unreachable!() };
+		let Some(_bin_path) = args.next() else {
+			unreachable!()
+		};
 		let mut it = args.peekable();
 		if it.peek()
 			.is_none()
 		{
 			Err(Self::Error::NoArguments)?
 		}
-		let rx = regex!(
-			r#"(-{1,2}|\+)p(ort)?[-_]?(n(um(ber)?)?)?([ :=]?(?<port>[0-9]{1,5})?)?"#i
-		);
+		let rx = regex!(r#"(-{1,2}|\+)p(ort)?[-_]?(n(um(ber)?)?)?([ :=]?(?<port>[0-9]{1,5})?)?"#i);
 
 		let Some(potential) = it
 			.by_ref()
@@ -137,7 +137,9 @@ impl TryFrom<Args> for Port {
 				{
 					it.next();
 				}
-				let Some(m) = it.next() else { Err(Self::Error::NotSpecified)? };
+				let Some(m) = it.next() else {
+					Err(Self::Error::NotSpecified)?
+				};
 				m
 			},
 		};
@@ -148,12 +150,11 @@ impl TryFrom<Args> for Port {
 
 impl StartupOption {
 	#[inline(always)]
-	/// Parse a new instance from the passed in [`Args`] or default to [`Client`]
+	/// Parse a new instance from the passed in [`Args`] or default to
+	/// [`Client`]
 	///
 	/// [`Client`]: Self::Client
-	pub fn new() -> Self {
-		Self::default()
-	}
+	pub fn new() -> Self { Self::default() }
 
 	/// Check whether the instance of
 	#[doc = concat!('`', env!("CARGO_PKG_NAME"), '`')]
@@ -174,9 +175,7 @@ impl StartupOption {
 
 impl Default for StartupOption {
 	#[inline(always)]
-	fn default() -> Self {
-		Self::try_from(args()).unwrap_or(Self::Client)
-	}
+	fn default() -> Self { Self::try_from(args()).unwrap_or(Self::Client) }
 }
 
 impl TryFrom<Args> for StartupOption {
@@ -184,7 +183,9 @@ impl TryFrom<Args> for StartupOption {
 
 	#[inline]
 	fn try_from(mut args: Args) -> Result<Self, Self::Error> {
-		let Some(_bin_path) = args.next() else { unreachable!() };
+		let Some(_bin_path) = args.next() else {
+			unreachable!()
+		};
 		let mut it = args.peekable();
 		if it.peek()
 			.is_none()
@@ -192,8 +193,7 @@ impl TryFrom<Args> for StartupOption {
 			Err(Self::Error::NoArguments)?
 		}
 		let Some(Some(m)) = it.find_map(|s| {
-			let cap = regex!(r"(-{1,2}|\+)(?<init_as>s(erve(r)?)?|c(lient)?)")
-				.captures(s.as_str())?;
+			let cap = regex!(r"(-{1,2}|\+)(?<init_as>s(erve(r)?)?|c(lient)?)").captures(s.as_str())?;
 			Some(cap.name("init_as")
 				.map(|m| String::from(m.as_str())))
 		}) else {
