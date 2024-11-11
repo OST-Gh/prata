@@ -2,6 +2,7 @@
 use std::{
 	env::{args, vars, Args, Vars},
 	num::ParseIntError,
+	str::FromStr,
 };
 
 use lazy_regex::regex;
@@ -27,8 +28,7 @@ pub enum FromCallError {
 pub enum Port {
 	Default,
 	// [202407161159+0200] NOTE(by: @OST-Gh): no difference but clearness of origin for the dev.
-	PerFlag(u16),
-	PerEnvironment(u16),
+	Specific(u16),
 }
 
 #[derive(Debug)]
@@ -77,10 +77,17 @@ impl Default for Port {
 impl Into<u16> for Port {
 	fn into(self) -> u16 {
 		match self {
-			Self::PerFlag(p) | Self::PerEnvironment(p) => p,
+			Self::Specific(p) => p,
 			Self::Default => Self::DEFAULT_PORT,
 		}
 	}
+}
+
+impl FromStr for Port {
+	type Err = ParseIntError;
+
+	#[inline(always)]
+	fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(Self::Specific(s.parse::<u16>()?)) }
 }
 
 impl TryFrom<Vars> for Port {
@@ -99,7 +106,8 @@ impl TryFrom<Vars> for Port {
 		else {
 			Err(Self::Error::NotFound)?
 		};
-		Ok(Port::PerEnvironment(m.parse::<u16>()?))
+		m.parse()
+			.map_err(Self::Error::Parse)
 	}
 }
 
@@ -108,16 +116,14 @@ impl TryFrom<Args> for Port {
 
 	#[inline]
 	fn try_from(mut args: Args) -> Result<Self, Self::Error> {
-		let Some(_bin_path) = args.next() else {
-			unreachable!()
-		};
+		let Some(_bin_path) = args.next() else { unreachable!() };
 		let mut it = args.peekable();
 		if it.peek()
 			.is_none()
 		{
 			Err(Self::Error::NoArguments)?
 		}
-		let rx = regex!(r#"(-{1,2}|\+)p(ort)?[-_]?(n(um(ber)?)?)?([ :=]?(?<port>[0-9]{1,5})?)?"#i);
+		let rx = regex!(r#"(-{1,2}|\+)p(ort)?[-_]?(n(um(ber)?)?)?(( )?[=: ]?( )?(?<port>[0-9]{1,5})?)?"#i);
 
 		let Some(potential) = it
 			.by_ref()
@@ -137,14 +143,12 @@ impl TryFrom<Args> for Port {
 				{
 					it.next();
 				}
-				let Some(m) = it.next() else {
-					Err(Self::Error::NotSpecified)?
-				};
+				let Some(m) = it.next() else { Err(Self::Error::NotSpecified)? };
 				m
 			},
 		};
-
-		Ok(Port::PerFlag(m.parse::<u16>()?))
+		m.parse()
+			.map_err(Self::Error::Parse)
 	}
 }
 
@@ -159,7 +163,7 @@ impl StartupOption {
 	/// Check whether the instance of
 	#[doc = concat!('`', env!("CARGO_PKG_NAME"), '`')]
 	/// should start as a server.
-	pub fn start_as_server(&self) -> bool {
+	pub fn as_server(&self) -> bool {
 		let Self::Server = self else { return false };
 		true
 	}
@@ -167,7 +171,7 @@ impl StartupOption {
 	/// Check whether the instance of
 	#[doc = concat!('`', env!("CARGO_PKG_NAME"), '`')]
 	/// should start as a client.
-	pub fn start_as_client(&self) -> bool {
+	pub fn as_client(&self) -> bool {
 		let Self::Client = self else { return false };
 		true
 	}
@@ -178,14 +182,27 @@ impl Default for StartupOption {
 	fn default() -> Self { Self::try_from(args()).unwrap_or(Self::Client) }
 }
 
+impl FromStr for StartupOption {
+	type Err = FromCallError;
+
+	#[inline(always)]
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s.starts_with('s') {
+			Ok(Self::Server)
+		} else if s.starts_with('c') {
+			Ok(Self::Client)
+		} else {
+			Err(Self::Err::NotFound)
+		}
+	}
+}
+
 impl TryFrom<Args> for StartupOption {
 	type Error = FromCallError;
 
 	#[inline]
 	fn try_from(mut args: Args) -> Result<Self, Self::Error> {
-		let Some(_bin_path) = args.next() else {
-			unreachable!()
-		};
+		let Some(_bin_path) = args.next() else { unreachable!() };
 		let mut it = args.peekable();
 		if it.peek()
 			.is_none()
@@ -199,12 +216,6 @@ impl TryFrom<Args> for StartupOption {
 		}) else {
 			Err(Self::Error::NotFound)?
 		};
-		if m.starts_with('s') {
-			Ok(Self::Server)
-		} else if m.starts_with('c') {
-			Ok(Self::Client)
-		} else {
-			unreachable!()
-		}
+		m.parse()
 	}
 }

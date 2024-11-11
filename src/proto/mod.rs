@@ -12,6 +12,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use client::Client;
 use lazy_regex::regex;
+use server::UserId;
 use stream::{FromStream, Streamable};
 use thiserror::Error;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -21,15 +22,13 @@ pub mod server;
 pub mod spaces;
 pub mod stream;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-const MIN_BYTES: usize = 3;
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static mut ID: u16 = 0;
+const MIN_BYTES: usize = 2;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub struct Username(String);
 
 pub struct User {
 	name: Username,
-	id: u16, /* :IMUTABLE: */
+
 	inbound_on: (BufReader<TcpStream>, SocketAddr),
 }
 
@@ -45,7 +44,7 @@ pub struct Message<T>
 where
 	T: Streamable + ?Sized,
 {
-	author: User,
+	author: UserId,
 	message: AnonymousMessage<T>,
 }
 
@@ -86,6 +85,8 @@ pub enum MessageError {
 
 	#[error("Cannot parse to `{1}` from `{0}`.")]
 	UIDMismatch(u8, u8),
+	#[error("A uid cannot be equal to zero")]
+	UIDIsZero,
 	#[error(
 		"A message cannot be less than {min} bytes, but a stream with {0} bytes was provided.",
 		min = MIN_BYTES,
@@ -156,13 +157,6 @@ pub trait Protocol {
 	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-pub fn get_id() -> u16 {
-	let prev = unsafe { ID };
-	unsafe { ID += 1 }
-	prev
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 impl Username {
 	const MAX_LEN: usize = 31;
 
@@ -199,38 +193,10 @@ impl FromStr for Username {
 	}
 }
 
-impl TryFrom<TcpListener> for User {
-	type Error = MessageError;
-
-	fn try_from(listener: TcpListener) -> Result<Self, Self::Error> {
-		listener.set_nonblocking(false)?;
-		let id = get_id();
-		let res = listener.accept();
-
-		let mut inbound_on = match res {
-			Ok((socket, addr)) => (BufReader::new(socket), addr),
-			Err(err) => Err(Self::Error::IO(err))?,
-		};
-
-		let mut buf = Vec::with_capacity(2);
-
-		inbound_on
-			.0
-			.read_until(0b0000_0000, &mut buf)?;
-		let name = String::from_utf8(buf)?.parse::<Username>()?;
-
-		Ok(Self {
-			name,
-			inbound_on,
-			id,
-		})
-	}
-}
-
-impl<T> From<(User, AnonymousMessage<T>)> for Message<T>
+impl<T> From<(UserId, AnonymousMessage<T>)> for Message<T>
 where
 	T: Streamable,
 {
 	#[inline(always)]
-	fn from((author, message): (User, AnonymousMessage<T>)) -> Self { Self { author, message } }
+	fn from((author, message): (UserId, AnonymousMessage<T>)) -> Self { Self { author, message } }
 }

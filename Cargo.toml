@@ -14,8 +14,18 @@
 	name = 'prata'
 	path = 'src/main.rs'
 ###############################################################################################################################
+[features]
+	'multi-thread' = ['rayon']
+	'rayon'        = ['dep:rayon']
+###############################################################################################################################
 [dependencies]
-	chrono           = '0'
-	lazy-regex       = '3'
-	local-ip-address = '0'
-	thiserror        = '1'
+	chrono            = '0'
+	crossbeam-channel = '0'
+	either            = '1'
+	lazy-regex        = '3'
+	local-ip-address  = '0'
+	parking_lot       = '0'
+	thiserror         = '1'
+	[dependencies.rayon]
+		optional = true
+		version  = '1'

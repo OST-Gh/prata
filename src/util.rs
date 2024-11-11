@@ -46,7 +46,7 @@ pub enum DetermineAddressError {
 	Local(#[from] ResolveError),
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-pub fn determine_address() -> result::Result<Ipv4Addr, DetermineAddressError> {
+pub fn local_v4ip() -> result::Result<Ipv4Addr, DetermineAddressError> {
 	let ip = local_ip()?;
 	match ip {
 		IpAddr::V4(v4) => Ok(v4),

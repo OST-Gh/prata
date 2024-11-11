@@ -1,13 +1,13 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 use header::Header;
 
-use crate::proto::MessageError;
+use crate::proto::{MessageError, MIN_BYTES};
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub mod header;
 mod impls;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub trait Streamable {
-	const HEADER: Header;
+	fn header(&self) -> Header;
 
 	fn content_as_stream(&self) -> &[u8];
 
@@ -19,9 +19,17 @@ pub trait Streamable {
 			content.push(b'\0')
 		}
 		content.reserve(1);
-		content.insert(0, Self::HEADER.to_u8());
+		content.insert(
+			0,
+			self.header()
+				.to_u8(),
+		);
 		content.into_boxed_slice()
 	}
+}
+
+pub trait Headed {
+	const HEADER: Header;
 }
 
 pub trait FromStream {
@@ -32,18 +40,19 @@ pub trait FromStream {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 pub fn validate<'a, T>(sliceref: &'a impl AsRef<[u8]>) -> Result<Box<[u8]>, MessageError>
 where
-	T: ?Sized + Streamable,
+	T: ?Sized + Headed + Streamable,
 {
 	let stream = sliceref.as_ref();
 	let len = stream.len();
 
-	if len < 1 {
+	if len < MIN_BYTES {
 		Err(MessageError::TooShort(len))?
 	}
 
 	let header = {
 		let wrapped = stream.first();
-		Header::new(*unsafe { wrapped.unwrap_unchecked() })
+		let n = *unsafe { wrapped.unwrap_unchecked() };
+		Header::new(n).ok_or(MessageError::UIDIsZero)?
 	};
 
 	if header.is::<T>() {
