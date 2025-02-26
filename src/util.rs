@@ -5,13 +5,11 @@ use std::{
 	result,
 };
 
-use local_ip_address::{local_ip, Error as ResolveError};
+use besked::errors::MessageError;
+use local_ip_address::{Error as ResolveError, local_ip};
 use thiserror::Error;
 
-use crate::{
-	invoke::FromCallError,
-	proto::{spaces::FromIPv4Error, MessageError},
-};
+use crate::{invoke::FromCallError, proto::spaces::FromIPv4Error};
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 mod macro_def {
 	#[macro_export]

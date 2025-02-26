@@ -1,31 +1,40 @@
 ###############################################################################################################################
+[workspace]
+	members  = ['besked']
+	resolver = '2'
+	#######################################################################################################################
+	[workspace.package]
+		authors      = ['OST-Gh']
+		categories   = ['command-line-utilities']
+		description  = 'A bespoke TCP./IP.(v4) chat application that runs from the CLI.'
+		edition      = '2024'
+		keywords     = []
+		license-file = 'LICENSE'
+		name         = 'prata'
+		readme       = 'README.md'
+		version      = '0.0.0'
+###############################################################################################################################
 [package]
-	authors      = ['OST-Gh']
-	categories   = ['command-line-utilities']
-	description  = 'A bespoke T.C.P./I.P.(v.4) chat application that runs from the C.L.I.'
-	edition      = '2021'
-	keywords     = []
-	license-file = 'LICENSE'
-	name         = 'prata'
-	readme       = 'README.md'
-	version      = '0.0.0'
-###############################################################################################################################
-[[bin]]
-	name = 'prata'
-	path = 'src/main.rs'
-###############################################################################################################################
-[features]
-	'multi-thread' = ['rayon']
-	'rayon'        = ['dep:rayon']
+	authors.workspace      = true
+	categories.workspace   = true
+	description.workspace  = true
+	edition.workspace      = true
+	keywords.workspace     = true
+	license-file.workspace = true
+	name                   = 'prata'
+	readme.workspace       = true
+	version.workspace      = true
 ###############################################################################################################################
 [dependencies]
-	chrono            = '0'
 	crossbeam-channel = '0'
+	crossterm         = '0'
 	either            = '1'
 	lazy-regex        = '3'
 	local-ip-address  = '0'
 	parking_lot       = '0'
+	paste             = '1'
+	ratatui           = '0'
+	rayon             = '1'
 	thiserror         = '1'
-	[dependencies.rayon]
-		optional = true
-		version  = '1'
+	[dependencies.besked]
+		path = './besked'
